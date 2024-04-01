@@ -136,11 +136,13 @@ PyScalarT validate_shape(
     T list,
     const std::vector<int>& shape,
     int idx,
-    bool& all_python_primitive_elements) {
+    bool& all_python_primitive_elements,
+    std::optional<bool> is_nested = false) {
   if (idx >= shape.size()) {
     throw std::invalid_argument("Initialization encountered extra dimension.");
   }
   auto s = shape[idx];
+
   if (nb::len(list) != s) {
     throw std::invalid_argument(
         "Initialization encountered non-uniform length.");
@@ -155,20 +157,50 @@ PyScalarT validate_shape(
     PyScalarT t;
     if (nb::isinstance<nb::list>(l)) {
       t = validate_shape(
-          nb::cast<nb::list>(l), shape, idx + 1, all_python_primitive_elements);
+          nb::cast<nb::list>(l),
+          shape,
+          idx + 1,
+          all_python_primitive_elements,
+          true);
     } else if (nb::isinstance<nb::tuple>(*list.begin())) {
       t = validate_shape(
           nb::cast<nb::tuple>(l),
           shape,
           idx + 1,
-          all_python_primitive_elements);
+          all_python_primitive_elements,
+          true);
     } else if (nb::isinstance<nb::bool_>(l)) {
+      if (!is_nested.value_or(false)) {
+        if (idx != 0) {
+          throw std::invalid_argument(
+              "Initialization encountered non-uniform length.");
+        }
+      }
       t = pybool;
     } else if (nb::isinstance<nb::int_>(l)) {
+      if (!is_nested.value_or(false)) {
+        if (idx != 0) {
+          printf("S is %d\n", s);
+          throw std::invalid_argument(
+              "Initialization encountered non-uniform length.");
+        }
+      }
       t = pyint;
     } else if (nb::isinstance<nb::float_>(l)) {
+      if (!is_nested.value_or(false)) {
+        if (idx != 0) {
+          throw std::invalid_argument(
+              "Initialization encountered non-uniform length.");
+        }
+      }
       t = pyfloat;
     } else if (PyComplex_Check(l.ptr())) {
+      if (!is_nested.value_or(false)) {
+        if (idx != 0) {
+          throw std::invalid_argument(
+              "Initialization encountered non-uniform length.");
+        }
+      }
       t = pycomplex;
     } else if (nb::isinstance<array>(l)) {
       all_python_primitive_elements = false;
@@ -197,6 +229,7 @@ PyScalarT validate_shape(
 template <typename T>
 void get_shape(T list, std::vector<int>& shape) {
   shape.push_back(check_shape_dim(nb::len(list)));
+
   if (shape.back() > 0) {
     auto l = list.begin();
     if (nb::isinstance<nb::list>(*l)) {
